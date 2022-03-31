@@ -1,17 +1,10 @@
 #!/bin/bash
 set -x -e
-KERNELVERSION=5.10.92
+KERNELVERSION=5.15.15
 KERNEL=linux-$KERNELVERSION
-CONFIG=/boot/config-5.10.0-11-*
+CONFIG=/aiko/linux-5.15.15/config.amd64_none_amd64
 AUFS=aufs5-standalone
-CHECKOUT=origin/aufs5.10.82
-
-apt update
-apt install --yes git
-apt build-dep linux
-apt source linux
-#wget https://cdn.kernel.org/pub/linux/kernel/v5.x/$KERNEL.tar.xz
-#tar -xf $KERNEL.tar.xz
+CHECKOUT=origin/aufs5.15.5
 
 cd $KERNEL
 rm -Rf $AUFS
@@ -55,8 +48,8 @@ CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
 
 make olddefconfig
-make -j8 modules
-make -j8 bzImage
+make -j16 modules
+make -j16 bzImage
 make modules_install INSTALL_MOD_STRIP=1
 
 TMP=/aaa-kernel
