@@ -14,14 +14,14 @@
 # and you're done.
 LIVEKITNAME="aiko"
 
-# Kernel file, will be copied to your Live Kit
-# Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
-# out of the box.
-VMLINUZ=/aaa-kernel/boot/vmlinuz-5.15.15
-
 # Kernel version. Change it to "3.2.28" for example, if you are building
 # Live Kit with a different kernel than the one you are actually running
 KERNEL="5.15.15"
+
+# Kernel file, will be copied to your Live Kit
+# Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
+# out of the box.
+VMLINUZ=/boot/vmlinuz-$KERNEL
 
 # List of directories for root filesystem
 # No subdirectories are allowed, no slashes,
@@ -43,5 +43,5 @@ LIVEKITDATA=/tmp/$LIVEKITNAME-data-$$
 BEXT=sb
 
 # Directory with kernel .ko modules, can be different in some distros
-LMK="/aaa-kernel/usr/lib/modules/$KERNEL"
+LMK="/usr/lib/modules/$KERNEL"
 
