@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+current_dir=$(cd $(dirname $0) && pwd)
 
 apt update
 apt install --yes --no-install-recommends \
@@ -25,9 +27,9 @@ chmod u+s /usr/lib/xorg/Xorg
 rm -Rf /usr/share/icons/breeze_cursors
 mv /usr/share/icons/Breeze_Snow /usr/share/icons/breeze_cursors
 
-(cd rootcopy && cp --parents -afr * /)
+(cd ${current_dir}/rootcopy && cp --parents -afr * /)
 
-cp ../../cleanup /tmp
+cp ${current_dir}/../../cleanup /tmp
 # install x11 server utils, apt-get would add cpp dependency, bullshit!
 cd /tmp
 apt download x11-xserver-utils
@@ -39,5 +41,5 @@ update-alternatives --set x-terminal-emulator /usr/bin/xterm
 
 . /tmp/cleanup
 
-savechanges /02-xorg.sb
+savechanges /tmp/020-xorg.sb
 

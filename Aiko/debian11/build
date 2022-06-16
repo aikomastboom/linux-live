@@ -1,18 +1,23 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-THIS=$(dirname $(readlink -f $0))
+set -ex
+aiko_current_dir=$(cd $(dirname ${BASH_SOURCE:-$0}) && pwd)
 
-sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
-sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
+#sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
+#sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
+cd ${aiko_current_dir}
 
 . ./copy
 #. ./install
+set +e
 . ./cleanup
+set -e
 . ./copy
 
 # now run build script
 SKIPINITRFS=true
 cd ../../
+# save $0
 . ./build
 
 # setup initrd now, to include aufs
@@ -23,4 +28,4 @@ cd initramfs
 . ./initramfs_create
 
 mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
-cp -vfR $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
+cp -vfR ${aiko_current_dir}/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/

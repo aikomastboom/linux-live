@@ -60,5 +60,5 @@ user_preinit "$DATA" "$UNION"
 header "Live Kit done, starting $LIVEKITNAME"
 change_root "$UNION"
 
-header "!!ERROR occured, you shouldn't be here.!!"
+header "!!ERROR occurred, you shouldn't be here.!!"
 /bin/sh

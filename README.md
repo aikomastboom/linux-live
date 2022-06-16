@@ -62,3 +62,11 @@ Note:
 
 
 Author: Tomas M. <http://www.linux-live.org>
+
+
+
+https://berrywm.org/usage.html
+https://github.com/davatorium/rofi
+https://github.com/polybar/polybar
+https://github.com/dunst-project/dunst
+

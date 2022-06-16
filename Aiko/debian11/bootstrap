@@ -1,0 +1,333 @@
+#!/usr/bin/env bash
+
+mkdir -p /aiko
+cd /aiko
+
+apt-get update
+apt-get install git
+
+
+#apt-get install zsh
+#sh -c "$(wget https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
+
+apt-get install vim-tiny
+
+apt-get install byobu python-is-python3
+
+[ ! -d linux-live ] && git clone \
+  https://github.com/aikomastboom/linux-live.git -b vanilla-aiko
+
+
+
+
+#apt-get install kernel-package ncurses-dev fakeroot wget bzip2 build-essential
+
+#build kernel
+
+## ./linux-live/tools/aufs-kernel-compile-and-install
+
+#https://unix.stackexchange.com/questions/608207/how-to-use-multi-threading-for-creating-and-extracting-tar-xz
+
+
+
+# --- install base system
+# https://linuxconfig.org/install-debian-server-in-a-linux-chroot-environment
+
+# https://wiki.debian.org/Debootstrap
+apt install debootstrap
+
+
+# --------------------------------------------------------------------------------------------- tmp
+LAYER=tmp
+rm -rf /debian-$LAYER
+mkdir -p /debian-${LAYER}
+mount -t tmpfs tmpfs /debian-${LAYER}
+
+# --------------------------------------------------------------------------------------------- bootstrap
+
+LAYER=bootstrap
+rm -rf /debian-$LAYER
+
+debootstrap \
+--variant=minbase \
+--arch=amd64 \
+--exclude=nano \
+--include=zsh,git,wget,ca-certificates,vim-tiny,squashfs-tools,zip,\
+genisoimage,unzip,psmisc,net-tools,alsa-utils,man-db,less,xz-utils,\
+openssl,acpid,acpi-support-base,powermgmt-base,bzip2,gpart,hdparm,sdparm,\
+mdadm,smartmontools,dosfstools,lsof,htop,gddrescue,rsync,netcat,ssh,gpm,\
+wireless-tools,rfkill,file,dnsmasq,ntpdate,usb-modeswitch,pm-utils,\
+fdisk,neofetch,cmatrix,\
+virt-what,wpasupplicant,connman,systemd,systemd-sysv,\
+cpio,initramfs-tools,initramfs-tools-core,klibc-utils,libklibc,linux-base \
+bullseye \
+/debian-$LAYER \
+http://deb.debian.org/debian
+
+
+# --------------------------------------------------------------------------------------------- boot
+P_LAYER=$LAYER
+LAYER=001-boot
+mkdir /debian-$LAYER
+mount -t tmpfs tmpfs /debian-$LAYER
+
+rsync -av /debian-$P_LAYER/ /debian-$LAYER
+mkdir -p /debian-$LAYER/run/initramfs/memory/changes
+
+# --------------------------------------------------------------------------------------------- kernel
+P_LAYER=$LAYER
+LAYER=002-kernel
+mkdir /debian-$LAYER
+mount -t tmpfs tmpfs /debian-$LAYER
+
+mkdir /debian
+mount -t aufs -o br=/debian-$LAYER:/debian-$P_LAYER none /debian
+
+# add kernel
+cp linux-image-5.15.0-0.bpo.3-amd64-unsigned_5.15.15-2~bpo11+1+aiko_amd64.deb /debian/tmp
+#ln linux-image-5.15.0-0.bpo.3-amd64-unsigned_5.15.15-2~bpo11+1+aiko_amd64.deb /debian/tmp
+
+# add linux-live
+rsync -av \
+--exclude .git \
+ linux-live /debian/tmp
+
+cat > /etc/apt/apt.conf.d/000Aiko << EOF
+cat > /debian/etc/apt/apt.conf.d/000Aiko << EOF
+APT::Install-Recommends "0";
+APT::Install-Suggests "0";
+Acquire::Languages { "none"; }
+Acquire::ForceIPv4 true;
+Acquire::http::Proxy "http://192.168.22.15:3128/";
+EOF
+
+cd /debian/etc
+echo "{aiko}" > debian_chroot
+echo "mini.aiko.sh" > hostname
+echo "127.0.1.1       mini.aiko.sh mini" >> hosts
+# rm localtime
+# ln -s /usr/share/zoneinfo/Europe/Amsterdam localtime
+cd -
+
+# log into fresh debian
+mount -t proc proc /debian/proc
+mount -t devpts devpts /debian/dev/pts
+mount -t sysfs sysfs /debian/sys
+
+
+#-- in chroot
+#export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true
+cat > /debian/tmp/debootstrap.presets.txt << EOF
+debconf debconf/frontend                        select Noninteractive
+tzdata  tzdata/Areas                            select Europe
+tzdata  tzdata/Zones/Europe                     select Amsterdam
+locales locales/locales_to_be_generated    multiselect en_US.UTF-8 UTF-8
+locales locales/default_environment_locale      select en_US.UTF-8
+EOF
+
+cat > /debian/tmp/run-$LAYER.sh << EOF
+#!/usr/bin/env bash
+rm -f /etc/timezone /etc/localtime
+DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
+debconf-set-selections /tmp/debootstrap.presets.txt
+DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
+apt-get install locales tzdata
+DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \
+dpkg-reconfigure tzdata
+
+sed -i_orig \
+-e "s/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/g" \
+/etc/locale.gen
+
+locale-gen
+rm /etc/locale.gen_orig
+
+export LANG=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
+#export LC_ALL=en_US.UTF-8
+
+#-- set root passwd
+# passwd
+echo "root:toor" | chpasswd
+
+#-- add guest user
+useradd --home-dir /home/guest --no-create-home --no-user-group --shell /bin/bash --uid 1000 --gid users --comment "Guest User" guest
+echo "guest:guest" | chpasswd
+
+cd /tmp
+apt-get download acpi-support
+dpkg -x acpi-support*.deb /tmp/acpisupport
+cd -
+cd /tmp/acpisupport
+cp -aR * /
+# lib fails with "cp: cannot overwrite non-directory '/lib' with directory 'lib'"
+cp -aR lib/systemd /lib/
+cd -
+
+#install kernel
+dpkg -i /tmp/linux-image-5.15.0-0.bpo.3-amd64-unsigned_5.15.15-2~bpo11+1+aiko_amd64.deb
+EOF
+
+chmod +x /debian/tmp/run-$LAYER.sh
+chroot /debian /bin/bash -c "/tmp/run-$LAYER.sh"
+
+
+# --------------------------------------------------------------------------------------------- slax
+
+# begin / outside of chroot
+P_LAYER=$LAYER
+LAYER=003-slax
+umount /debian/proc ; umount /debian/dev/pts ; umount /debian/sys ; umount /debian/run/initramfs/memory/changes
+mkdir /debian-$LAYER
+mount -t tmpfs tmpfs /debian-$LAYER
+cat /sys/fs/aufs/si_*/br[0-9]
+mount -t aufs -o remount,prepend:"/debian-$LAYER",mod:"/debian-$P_LAYER"=ro aufs /debian
+#mount -t aufs -o remount,verbose,del:"/debian-zsh" aufs /debian
+#mount -t aufs -o remount,mod:/debian-kernel=ro aufs /debian
+#mount --bind /debian-$LAYER /debian/run/initramfs/memory/changes
+rsync -aPv Aiko/debian11/rootcopy/ /debian-slax
+
+# --------------------------------------------------------------------------------------------- zsh
+
+P_LAYER=${LAYER}
+LAYER=zsh
+#umount /debian/proc ; umount /debian/dev/pts ; umount /debian/sys
+mkdir /debian-${LAYER}
+mount -t tmpfs tmpfs /debian-${LAYER}
+mount -t aufs -o remount,prepend:"/debian-${LAYER}",mod:"/debian-${P_LAYER}"=ro aufs /debian
+#mount -t aufs -o remount,mod:/debian-kernel=ro aufs /debian
+mount --bind /debian-tmp /debian/tmp
+mount --bind /debian-${LAYER} /debian/run/initramfs/memory/changes
+
+# end /
+
+#enter chroot
+mount -t proc proc /debian/proc
+mount -t devpts devpts /debian/dev/pts
+mount -t sysfs sysfs /debian/sys
+
+
+#chroot /debian /bin/bash --login
+cat > /debian/tmp/run-${LAYER}.sh << EOF
+#!/usr/bin/env bash
+
+
+# -- oh-my-zsh
+# install oh-my-zsh
+sh -c "$(wget https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
+
+sed -i_orig \
+-e "s/ZSH_THEME=\"robbyrussell\"/ZSH_THEME=\"ys\"/g" \
+-e "s/plugins=(git)/plugins=(git z)/g" \
+-e "s/# export LANG=en_US.UTF-8/export LANG=en_US.UTF-8\nexport LC_CTYPE=en_US.UTF-8\nexport LC_ALL=en_US.UTF-8\n/g" \
+/root/.zshrc
+
+echo "VIRTUAL_ENV=\$(cat /etc/debian_chroot)" >> /root/.zshrc
+omz reload
+chsh -s $(which zsh)
+
+savechanges /tmp/005-zsh.sb
+
+EOF
+
+chmod +x /debian/tmp/run-${LAYER}.sh
+chroot /debian /bin/bash -c "/tmp/run-${LAYER}.sh"
+
+# --------------------------------------------------------------------------------------------- firmware
+
+# update linux-live
+rsync -av \
+--exclude .git \
+ linux-live /debian-kernel/tmp
+
+LAYER=zsh
+P_LAYER=${LAYER}
+LAYER=010-firmware
+P_LAYER=${LAYER}
+LAYER=020-xorg
+P_LAYER=${LAYER}
+LAYER=030-desktop
+P_LAYER=${LAYER}
+LAYER=040-apps
+P_LAYER=${LAYER}
+LAYER=050-chromium
+P_LAYER=${LAYER}
+LAYER=060-docker
+P_LAYER=${LAYER}
+LAYER=999-build
+
+P_LAYER=zsh
+for LAYER in 010-firmware 020-xorg 030-desktop 040-apps 050-chromium 060-docker; do
+
+mkdir -p /debian-${LAYER}
+mount -t tmpfs tmpfs /debian-${LAYER}
+mount -t aufs -o remount,prepend:"/debian-${LAYER}",mod:"/debian-${P_LAYER}"=ro aufs /debian
+mount --bind /debian-${LAYER} /debian/run/initramfs/memory/changes
+mount --bind /debian-tmp /debian/tmp
+mount -t proc proc /debian/proc
+mount -t devpts devpts /debian/dev/pts
+mount -t sysfs sysfs /debian/sys
+
+chroot /debian /bin/bash -c "/tmp/linux-live/Aiko/debian11/modules/${LAYER}/build"
+
+#-- undo last layer
+umount /debian/proc ; umount /debian/dev/pts ; umount /debian/sys ; umount /debian/tmp ; umount /debian/run/initramfs/memory/changes
+P_LAYER=${LAYER}
+
+done
+
+mount -t aufs -o remount,verbose,del:"/debian-${LAYER}" aufs /debian
+umount /debian-${LAYER}
+
+useradd --home-dir /home/guest --no-create-home --no-user-group --shell /bin/bash --uid 1000 --gid users --comment "Guest User" guest
+chroot /debian /bin/zsh --login
+
+
+#-- set root passwd
+#passwd
+#echo "root:toor" | chpasswd
+# toor
+
+# mount usb stick
+#$ mount /dev/sdb2 /debian/mnt/root ;\
+#mount /dev/sdb1 /debian/mnt/boot
+mount -t tmpfs tmpfs /mnt ; mkdir -p /mnt/boot /mnt/root
+# initialize usb stick
+./build && /tmp/gen_slax_usb.sh /mnt/boot /mnt/root ; sync
+umount /mnt
+#-- exit chroot
+#umount /debian/run/initramfs/memory/changes
+#umount /debian/proc ; umount /debian/dev/pts ; umount /debian/sys
+
+
+
+
+
+#========================================================
+
+
+# macmini: docker run -d -p 9001:9001 --name portainer_agent --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v /var/lib/docker/volumes:/var/lib/docker/volumes portainer/agent:2.11.1
+# nas: docker run -d -p 9001:9001 --name portainer_agent --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v /var/packages/Docker/target/docker/volumes:/var/lib/docker/volumes --dns 192.168.22.15 portainer/agent:2.11.1
+
+#Failure
+#Get "https://pci-ids.ucw.cz/v2.2/pci.ids.gz":
+#dial tcp: lookup pci-ids.ucw.cz on 192.168.22.22:53: server misbehaving
+
+#--- virtualbox
+# https://fasttrack.debian.net/
+# https://wiki.debian.org/VirtualBox#Debian_10_.22Buster.22_and_Debian_11_.22Bullseye.22
+
+
+#--- porteus virtualbox code
+# http://ftpmirror1.infania.net/mirror/porteus/i586/testing/live/update-vbox-live
+# https://forum.porteus.org/viewtopic.php?f=35&t=7742
+# https://stackoverflow.com/questions/56823857/valueerror-namespace-gtk-not-available
+# sudo apt install python3-gi gobject-introspection gir1.2-gtk-3.0
+
+
+#apt-get install openssh-known-hosts openssh-server zsh byobu wget vim-tiny python-is-python3 git htop ca-certificates
+#sh -c "$(wget https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
+#omz reload
+#echo "PermitRootLogin yes" > /etc/ssh/sshd_config.d/permit_root_login.conf
+#passwd
+#service ssh start

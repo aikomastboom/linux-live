@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Linux Live Kit version 7
 
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
-CHANGEDIR=$(dirname $(readlink -f $0))
-echo "Changing current directory to $CHANGEDIR"
-cd $CHANGEDIR
+root_current_dir=$(cd $(dirname ${BASH_SOURCE:-$0}) && pwd)
+
+echo "Changing current directory to ${root_current_dir}"
+cd ${root_current_dir}
 CWD="$(pwd)"
 
 . ./config || exit 1
@@ -68,7 +69,7 @@ for i in $MKMOD; do
       COREFS="$COREFS /$i"
    fi
 done
-mksquashfs $COREFS $LIVEKITDATA/$LIVEKITNAME/01-core.$BEXT -comp xz -b 1024K -always-use-fragments -keep-as-directory || exit
+mksquashfs $COREFS $LIVEKITDATA/$LIVEKITNAME/001-core.$BEXT -comp xz -b 1024K -always-use-fragments -keep-as-directory || exit
 
 cd "$LIVEKITDATA"
 ARCH=$(uname -m)
@@ -76,15 +77,39 @@ TARGET=/tmp
 
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$/\x0D/" > readme.txt
 
-echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+cat > $TARGET/gen_"$LIVEKITNAME"_iso.sh << EOF
+cd $LIVEKITDATA && \
+$MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
--b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
-> $TARGET/gen_"$LIVEKITNAME"_iso.sh
+-b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot .
+EOF
 chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
 
-echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
-> $TARGET/gen_"$LIVEKITNAME"_zip.sh
+cat > $TARGET/gen_"$LIVEKITNAME"_zip.sh << EOF
+cd $LIVEKITDATA && zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
+EOF
 chmod o+x $TARGET/gen_"$LIVEKITNAME"_zip.sh
+
+cat > $TARGET/gen_"$LIVEKITNAME"_usb.sh << EOF
+#!/usr/bin/env bash
+set -e
+boot=\$1
+root=\$2
+if [[ -z \$boot || -z \$root ]]; then
+  echo missing boot and root folder args
+  exit 1
+fi
+cd $LIVEKITDATA
+rsync -a $LIVEKITNAME \$root
+mkdir -p \$boot/$LIVEKITNAME
+rsync -a $LIVEKITNAME/boot \$boot/$LIVEKITNAME
+cd \$boot
+rsync -a $LIVEKITNAME/boot/EFI .
+cd \$root
+rsync -a $LIVEKITNAME/boot/EFI .
+EOF
+chmod o+x $TARGET/gen_"$LIVEKITNAME"_usb.sh
+
 
 echo "-----------------------------"
 echo "Finished. Find your result in $LIVEKITDATA"

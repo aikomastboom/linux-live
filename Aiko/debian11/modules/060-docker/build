@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+current_dir=$(cd $(dirname $0) && pwd)
+
+#--  docker
+apt-get update
+apt install --no-install-recommends --yes \
+  apparmor \
+  docker.io \
+  pigz
+
+usermod -aG docker guest
+
+service docker stop
+
+#mount a disk somewhere eg /mnt
+## mount /dev/sdb2 /mnt
+# rsync existing docker folder onto it
+## rsync -aSHAXP --info=progress2 --delete /var/lib/docker /mnt
+# edit /etc/default/docker
+cat >> /etc/default/docker << EOF
+# Use DOCKER_OPTS to modify the daemon startup options.
+# DOCKER_OPTS="--storage-driver=overlay2 -D --dns 192.168.22.15 --graph=/mnt/docker --log-driver=syslog --log-opt syslog-address=udp://192.168.22.22:514 --log-opt syslog-format=rfc5424"
+DOCKER_OPTS="--storage-driver=overlay2 -D --dns 192.168.22.15 --graph=/var/lib/docker --log-driver=syslog --log-opt syslog-address=udp://192.168.22.22:514 --log-opt syslog-format=rfc5424"
+
+# If you need Docker to use an HTTP proxy, it can also be specified here.
+export http_proxy="http://192.168.22.15:3128/"
+
+# This is also a handy place to tweak where Docker's temporary files go.
+# export TMPDIR=/mnt/docker-tmp
+export TMPDIR=/tmp
+EOF
+
+. ${current_dir}/../../cleanup
+
+savechanges /tmp/060-docker.sb

@@ -49,7 +49,7 @@ find \( -type d -printf "%p/\n" , -not -type d -print \) \
     cp --parents -afr "$FILE" "$TMP"
 done
 
-cd $CWD
+cd "$CWD" || true
 
 mksquashfs $TMP "$1" -comp xz -b 1024K -always-use-fragments -noappend
 

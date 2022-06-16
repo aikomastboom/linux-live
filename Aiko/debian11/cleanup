@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-apt remove apparmor --yes
+[ ! -x /usr/bin/docker ] && \
+  apt remove apparmor --yes
 
 
 rm -f /etc/fstab
@@ -22,6 +23,8 @@ rm -f /var/lib/apt/lists/deb.*
 rm -Rf /root/.local/share/mc
 rm -Rf /root/.cache
 rm -f /root/.wget-hsts
+rm -Rf /root/.oh-my-zsh/cache
+rm -f /root/.zsh_history
 
 rm -f /var/lib/dpkg/*-old
 rm -f /var/log/*
@@ -39,11 +42,11 @@ rm -f /usr/share/images/fluxbox/debian-squared.jpg
 rm -Rf /usr/share/fluxbox/nls/??*
 rm -Rf /usr/share/gnome/help
 
-rm -Rf /usr/share/locale/??
-rm -Rf /usr/share/locale/??_*
-rm -Rf /usr/share/locale/??@*
-rm -Rf /usr/share/locale/???
-rm -Rf /usr/share/i18n/locales/*_*
+#rm -Rf /usr/share/locale/??
+#rm -Rf /usr/share/locale/??_*
+#rm -Rf /usr/share/locale/??@*
+#rm -Rf /usr/share/locale/???
+#rm -Rf /usr/share/i18n/locales/*_*
 rm -Rf /usr/share/man/??
 rm -Rf /usr/share/man/*_*
 

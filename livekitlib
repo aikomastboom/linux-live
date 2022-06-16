@@ -164,9 +164,16 @@ modprobe_everything()
    debug_log "modprobe_everything" "$*"
 
    echo_green_star >&2
-   echo "Probing for hardware" >&2
+   echo -n "Probing for hardware [" >&2
 
-   find /lib/modules/ | fgrep .ko | egrep $1 $2 | sed -r "s:^.*/|[.]ko\$::g" | xargs -n 1 modprobe 2>/dev/null
+   find /lib/modules/ | \
+     fgrep .ko | \
+     egrep $1 $2 | \
+     sed -r "s:^.*/|[.]ko\$::g" | \
+     xargs -i sh -c 'echo -n {} && modprobe {} 2>/dev/null && echo -n ". "'
+
+   echo "]"
+
    refresh_devs
 }
 
@@ -231,27 +238,35 @@ init_aufs()
 }
 
 
-# Setup empty aufs union, or create overlayfs union
-# $1 = changes directory (ramfs or persistent changes)
+# Setup empty AUFS union, or create overlayFS union
+# $1 = changes directory (ramFS or persistent changes)
 # $2 = union directory where to mount the union
 # $3 = bundles directory
 #
 init_union()
 {
    debug_log "init_union" "$*"
-   mkdir -p "$1"
-   mkdir -p "$2"
+
+   local CHANGES UNION BUNDLES
+   CHANGES="$1"
+   UNION="$2"
+   BUNDLES="$3"
+
+   mkdir -p "$CHANGES"
+   mkdir -p "$UNION"
 
    if aufs_is_supported >/dev/null; then
       echo_green_star
       echo "Setting up empty union using aufs"
-      mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
+      mount -t aufs -o xino="/.xino",trunc_xino,br="$CHANGES" aufs "$UNION"
    else
       echo_green_star
-      echo "Setting up union using overlayfs"
-      mkdir -p "$1/changes"
-      mkdir -p "$1/workdir"
-      mount -t overlay overlay -o lowerdir=$(find "$3" -mindepth 1 -maxdepth 1 | sortmod | tac | tr '\n' ':' | sed -r 's/:$//'),upperdir=$1/changes,workdir=$1/workdir $2
+      echo "Setting up union using overlayFS"
+      mkdir -p "$CHANGES/changes"
+      mkdir -p "$CHANGES/workdir"
+      mount -t overlay overlay \
+        -o lowerdir=$(find "$BUNDLES" -mindepth 1 -maxdepth 1 | sortmod | tac | tr '\n' ':' | sed -r 's/:$//'),upperdir="$CHANGES/changes",workdir="$CHANGES/workdir" \
+        $UNION
    fi
 }
 
@@ -795,7 +810,15 @@ mount_bundles()
 {
    echo_green_star
    echo "Mounting bundles"
-   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod | filter_load) | grep '[.]'$BEXT'$' | filter_noload | while read BUNDLE; do
+   ( ls -1 "$1" \
+   | sort -n \
+   ; cd "$1" \
+   ; find modules/ 2>/dev/null \
+   | sortmod \
+   | filter_load) \
+   | grep '[.]'$BEXT'$' \
+   | filter_noload \
+   | while read BUNDLE; do
       echo "* $BUNDLE"
       BUN="$(basename "$BUNDLE")"
       mkdir -p "$2/$BUN"
@@ -815,7 +838,8 @@ union_append_bundles()
    if aufs_is_supported >/dev/null; then
       echo_green_star
       echo "Adding bundles to union"
-      find "$1" -mindepth 1 -maxdepth 1 | sortmod | while read BUNDLE; do
+      find "$1" -mindepth 1 -maxdepth 1 | sortmod \
+      | while read BUNDLE; do
          mount -o remount,add:1:"$BUNDLE" aufs "$2"
       done
    fi
@@ -837,7 +861,8 @@ fstab_create()
    echo proc /proc proc defaults 0 0 >> $FSTAB
    echo sysfs /sys sysfs defaults 0 0 >> $FSTAB
    echo devpts /dev/pts devpts gid=5,mode=620 0 0 >> $FSTAB
-   echo tmpfs /dev/shm tmpfs defaults 0 0 >> $FSTAB
+# https://unix.stackexchange.com/questions/73262/use-run-shm-formerly-dev-shm-as-a-temp-directory
+   echo tmpfs /run/shm tmpfs defaults 0 0 >> $FSTAB
 
    if grep -vq automount /proc/cmdline; then
       return

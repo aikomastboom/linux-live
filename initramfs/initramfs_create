@@ -42,8 +42,10 @@ copy_including_deps()
 }
 
 rm -Rf $INITRAMFS
-mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sys,tmp,usr,var/log}
+mkdir -p $INITRAMFS/{bin,dev,etc,mnt,proc,root,run,sys,tmp,usr/lib,var/log}
 ln -s bin $INITRAMFS/sbin
+ln -s usr/lib $INITRAMFS/lib
+ln -s usr/lib $INITRAMFS/lib64
 
 cp static/busybox $INITRAMFS/bin
 cp static/eject $INITRAMFS/bin
@@ -135,6 +137,7 @@ cat $INITRAMFS/$LMK/modules.order | sed -r "s/.ko.gz\$/.ko/" | grep -E "$MODULEO
 mv $INITRAMFS/$LMK/_ $INITRAMFS/$LMK/modules.order
 
 depmod -b $INITRAMFS $KERNEL
+
 
 echo "root::0:0::/root:/bin/bash" >$INITRAMFS/etc/passwd
 touch $INITRAMFS/etc/{m,fs}tab

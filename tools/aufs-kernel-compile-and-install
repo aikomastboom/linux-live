@@ -1,8 +1,34 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -x -e
+
+# https://www.how2shout.com/linux/how-to-install-and-use-backports-in-debian-11-bullseye/
+
+echo "
+deb http://deb.debian.org/debian bullseye-backports main contrib non-free
+deb-src http://deb.debian.org/debian bullseye-backports main contrib non-free
+" >> /etc/apt/sources.list
+
+apt update
+apt-get install build-essential fakeroot dpkg-dev
+apt-get build-dep linux
+
+apt source linux-source=5.15 # goes into current dir
+
+#apt-get install linux-source-5.15 # goes into /usr/src
+
+# get default debian kernel config
+apt install linux-config-5.15
+
+cd linux-5.15.15
+cp /usr/src/linux-config-5.15/config.amd64_none_amd64.xz .
+xz -d config.amd64_none_amd64.xz
+
+cd ..
+
+
 KERNELVERSION=5.15.15
 KERNEL=linux-$KERNELVERSION
-CONFIG=/aiko/linux-5.15.15/config.amd64_none_amd64
+CONFIG=config.amd64_none_amd64
 AUFS=aufs5-standalone
 CHECKOUT=origin/aufs5.15.5
 
@@ -46,6 +72,59 @@ CONFIG_AUFS_POLL=y
 CONFIG_AUFS_BR_HFSPLUS=y
 CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
+
+
+# https://wiki.ubuntu.com/Kernel/BuildYourOwnKernel
+# https://askubuntu.com/questions/596120/cant-build-ubuntu-kernel-why-does-make-mrproper-get-rid-of-debian-directory
+
+# https://stackoverflow.com/questions/24633919/prepend-heredoc-to-a-file-in-bash
+{ cat - debian/changelog > debian/changelog.aiko && mv debian/changelog.aiko debian/changelog; } <<EOF
+linux (5.15.15-2~bpo11+1+aiko) bullseye-backports; urgency=low
+
+  [ Aiko Mastboom ]
+  * Rebuild for aiko live
+
+ -- Aiko Mastbom <debian@aiko.sh>  Sun, 03 Apr 2022 12:00:00 +0200
+
+EOF
+
+chmod a+x debian/rules
+chmod a+x debian/scripts/*
+chmod a+x debian/scripts/misc/*
+LANG=C fakeroot debian/rules clean
+LANG=C fakeroot make -f debian/rules.gen setup_amd64_none_amd64
+
+#-- optionally adjust the config
+LANG=C make -C debian/build/build_amd64_none_amd64 nconfig
+
+cat $CONFIG | sed -r "s/CONFIG_SYSTEM_TRUSTED_KEYS/#CONFIG_SYSTEM_TRUSTED_KEYS/" >.config
+
+echo "CONFIG_AUFS_FS=m
+# CONFIG_AUFS_BRANCH_MAX_127 is not set
+# CONFIG_AUFS_BRANCH_MAX_511 is not set
+# CONFIG_AUFS_BRANCH_MAX_1023 is not set
+CONFIG_AUFS_BRANCH_MAX_32767=y
+CONFIG_AUFS_SBILIST=y
+# CONFIG_AUFS_HNOTIFY is not set
+CONFIG_AUFS_EXPORT=y
+CONFIG_AUFS_INO_T_64=y
+CONFIG_AUFS_XATTR=y
+# CONFIG_AUFS_FHSM is not set
+# CONFIG_AUFS_RDU is not set
+CONFIG_AUFS_DIRREN=y
+CONFIG_AUFS_SHWH=y
+CONFIG_AUFS_BR_RAMFS=y
+CONFIG_AUFS_BR_FUSE=y
+CONFIG_AUFS_POLL=y
+CONFIG_AUFS_BR_HFSPLUS=y
+CONFIG_AUFS_BDEV_LOOP=y
+# CONFIG_AUFS_DEBUG is not set" >>.config
+
+
+$ fakeroot make -j16 -f debian/rules.gen binary-arch_amd64_none_amd64
+
+
+#-- not sure if below still applies when rolling own deb packages for kernel
 
 make olddefconfig
 make -j16 modules
